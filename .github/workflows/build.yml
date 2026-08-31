@@ -20,21 +20,111 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Extract project
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Extract ZIP projects
+        shell: bash
         run: |
-          mkdir -p project
+          set -e
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+          echo "Files in repository:"
+          find . -maxdepth 3 -type f | head -100
 
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: ZIP project not found."
+          while IFS= read -r -d '' zipfile; do
+            echo "Extracting: $zipfile"
+            unzip -o "$zipfile" -d "${zipfile%.zip}"
+          done < <(find . -type f -iname '*.zip' -print0)
+
+      - name: Find Android project
+        shell: bash
+        run: |
+          set -e
+
+          PROJECT_DIR=""
+
+          # Cari Gradle Wrapper dahulu
+          GRADLEW=$(find . -type f -name "gradlew" -print -quit)
+
+          if [ -n "$GRADLEW" ]; then
+            PROJECT_DIR=$(dirname "$GRADLEW")
+          else
+            # Kalau tiada gradlew, cari settings.gradle / settings.gradle.kts
+            SETTINGS=$(find . -type f \( \
+              -name "settings.gradle" \
+              -o -name "settings.gradle.kts" \
+            \) -print -quit)
+
+            if [ -n "$SETTINGS" ]; then
+              PROJECT_DIR=$(dirname "$SETTINGS")
+            fi
+          fi
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android/Gradle project tidak dijumpai."
+            echo "Mencari fail Gradle yang ada:"
+            find . -type f \( \
+              -name "build.gradle" \
+              -o -name "build.gradle.kts" \
+              -o -name "settings.gradle" \
+              -o -name "settings.gradle.kts" \
+              -o -name "gradlew" \
+            \) -print
             exit 1
           fi
 
-          echo "Extracting $ZIP_FILE"
-          unzip -o "$ZIP_FILE" -d project
+          PROJECT_DIR="${PROJECT_DIR#./}"
 
-      - name: Find Android project
+          echo "Android project found at: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Make Gradle executable
+        shell: bash
+        run: |
+          set -e
+
+          if [ -f "$PROJECT_DIR/gradlew" ]; then
+            chmod +x "$PROJECT_DIR/gradlew"
+          fi
+
+      - name: Build Release APK
+        shell: bash
+        run: |
+          set -e
+
+          cd "$PROJECT_DIR"
+
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleRelease --stacktrace
+          else
+            echo "ERROR: gradlew tidak dijumpai."
+            exit 1
+          fi
+
+      - name: Find APK
+        shell: bash
+        run: |
+          set -e
+
+          echo "Searching for APK..."
+
+          APK=$(find "$PROJECT_DIR" -type f -name "*.apk" -print -quit)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK tidak berjaya dibina."
+            exit 1
+          fi
+
+          echo "APK found: $APK"
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiquidGlassLauncher-APK
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+          - name: Find Android project
         run: |
           PROJECT_DIR=$(find project -type f \
             -name "settings.gradle" \
