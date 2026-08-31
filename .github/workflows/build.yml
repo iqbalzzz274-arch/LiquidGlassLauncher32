@@ -14,70 +14,61 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Extract ZIP projects
-        shell: bash
+      - name: Extract ZIP
         run: |
-          set -e
-
-          echo "Files in repository:"
-          find . -maxdepth 3 -type f | head -100
-
-          while IFS= read -r -d '' zipfile; do
-            echo "Extracting: $zipfile"
-            unzip -o "$zipfile" -d "${zipfile%.zip}"
-          done < <(find . -type f -iname '*.zip' -print0)
-
-      - name: Find Android project
-        shell: bash
-        run: |
-          set -e
-
-          PROJECT_DIR=""
-
-          # Cari Gradle Wrapper dahulu
-          GRADLEW=$(find . -type f -name "gradlew" -print -quit)
-
-          if [ -n "$GRADLEW" ]; then
-            PROJECT_DIR=$(dirname "$GRADLEW")
-          else
-            # Kalau tiada gradlew, cari settings.gradle / settings.gradle.kts
-            SETTINGS=$(find . -type f \( \
-              -name "settings.gradle" \
-              -o -name "settings.gradle.kts" \
-            \) -print -quit)
-
-            if [ -n "$SETTINGS" ]; then
-              PROJECT_DIR=$(dirname "$SETTINGS")
-            fi
+          mkdir -p extracted
+          ZIP=$(find . -type f -iname "*.zip" | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "ZIP tidak dijumpai"
+            exit 1
           fi
+          echo "Extracting $ZIP"
+          unzip -o "$ZIP" -d extracted
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: Android/Gradle project tidak dijumpai."
-            echo "Mencari fail Gradle yang ada:"
-            find . -type f \( \
-              -name "build.gradle" \
-              -o -name "build.gradle.kts" \
-              -o -name "settings.gradle" \
-              -o -name "settings.gradle.kts" \
-              -o -name "gradlew" \
-            \) -print
+      - name: Find Gradle project
+        run: |
+          GRADLEW=$(find extracted -type f -name "gradlew" | head -n 1)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "gradlew tidak dijumpai"
+            echo "Fail yang ada:"
+            find extracted -maxdepth 5 -type f | head -100
             exit 1
           fi
 
-          PROJECT_DIR="${PROJECT_DIR#./}"
-
-          echo "Android project found at: $PROJECT_DIR"
+          PROJECT_DIR=$(dirname "$GRADLEW")
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project: $PROJECT_DIR"
 
+      - name: Build APK
+        run: |
+          cd "$PROJECT_DIR"
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Find APK
+        run: |
+          APK=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "APK tidak dijumpai"
+            exit 1
+          fi
+
+          echo "APK=$APK" >> "$GITHUB_ENV"
+          echo "Found: $APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiquidGlassLauncher-APK
+          path: ${{ env.APK }}
       - name: Make Gradle executable
         shell: bash
         run: |
