@@ -19,25 +19,17 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
 
-      - name: Extract project
-        run: |
-          mkdir build-project
-          unzip -q LiquidGlassLauncher32_RedmiA3.zip -d build-project
-          cd build-project/LiquidGlassLauncher32
-          echo "Project extracted"
+      - name: Make Gradle executable
+        run: chmod +x gradlew
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Build APK
-        working-directory: build-project/LiquidGlassLauncher32
-        run: gradle :app:assembleDebug --no-daemon
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: LiquidGlassLauncher-RedmiA3
-          path: build-project/LiquidGlassLauncher32/app/build/outputs/apk/debug/*.apk
+          name: LiquidGlassLauncher-debug
+          path: |
+            **/build/outputs/apk/**/*.apk
