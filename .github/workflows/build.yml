@@ -24,49 +24,32 @@ jobs:
         run: |
           mkdir -p project
 
-          ZIP_FILE=$(find . -maxdepth 1 -type f \
-            \( -iname "*.zip" \) | head -n 1)
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
             echo "ERROR: ZIP project not found."
             exit 1
           fi
 
-          echo "Extracting: $ZIP_FILE"
+          echo "Extracting $ZIP_FILE"
           unzip -o "$ZIP_FILE" -d project
 
-      - name: Find Gradle project
+      - name: Find Android project
         run: |
-          GRADLEW=$(find project -type f -name "gradlew" | head -n 1)
+          PROJECT_DIR=$(find project -type f \
+            -name "settings.gradle" \
+            -o -name "settings.gradle.kts" \
+            -print -quit | xargs -r dirname)
 
-          if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found."
-            echo "Project structure:"
-            find project -maxdepth 4 -type f | head -100
-            exit 1
+          if [ -z "$PROJECT_DIR" ]; then
+            PROJECT_DIR=$(find project -type f \
+              -name "build.gradle" \
+              -o -name "build.gradle.kts" \
+              -print -quit | xargs -r dirname)
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Make Gradle executable
-        run: chmod +x "$PROJECT_DIR/gradlew"
-
-      - name: Build Release APK
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: ./gradlew assembleRelease --stacktrace
-
-      - name: Find APK
-        run: |
-          find "$PROJECT_DIR" \
-            -type f \
-            -name "*.apk" \
-            -print
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: LiquidGlassLauncher-APK
-          path: |
-            ${{ env.PROJECT_DIR }}/**/build/outputs/apk/**/*.apk
-          if-no-files-found: error
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: Android Gradle project not found."
+            find project -maxdepth 5 -type f
+            exit 1
+         
