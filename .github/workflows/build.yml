@@ -1,5 +1,4 @@
-name: Build Liquid Glass Launcher
-
+name: VoidGlassLauncherPremium_RedmiA3
 on:
   workflow_dispatch:
   push:
