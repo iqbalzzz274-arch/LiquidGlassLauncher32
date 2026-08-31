@@ -20,26 +20,76 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Find project
+      - name: Extract Android project
         shell: bash
         run: |
-          GRADLEW=$(find . -type f -name gradlew -print -quit)
-          if [ -z "$GRADLEW" ]; then
-            echo "gradlew tidak dijumpai"
-            find . -maxdepth 4 -type f | head -100
+          set -e
+
+          mkdir -p project
+
+          if [ -f "LiquidGlassLauncher32_RedmiA3.zip" ]; then
+            unzip -q "LiquidGlassLauncher32_RedmiA3.zip" -d project
+          elif [ -f "VoidGlassLauncherPremium_RedmiA3.zip" ]; then
+            unzip -q "VoidGlassLauncherPremium_RedmiA3.zip" -d project
+          else
+            echo "ZIP project tidak dijumpai"
             exit 1
           fi
-          echo "PROJECT_DIR=$(dirname "$GRADLEW")" >> "$GITHUB_ENV"
+
+          echo "Isi project:"
+          find project -type f -name "gradlew" -print
+
+      - name: Find Gradle project
+        shell: bash
+        run: |
+          set -e
+
+          GRADLEW=$(find project -type f -name "gradlew" -print -quit)
+
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: gradlew tidak dijumpai dalam ZIP."
+            echo "Fail Gradle yang dijumpai:"
+            find project -type f \( -name "build.gradle" -o -name "settings.gradle" -o -name "build.gradle.kts" -o -name "settings.gradle.kts" \) -print
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$GRADLEW")
+
+          echo "Project dijumpai:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Build APK
         shell: bash
         run: |
+          set -e
+
           cd "$PROJECT_DIR"
           chmod +x gradlew
-          ./gradlew assembleRelease
+
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Find APK
+        shell: bash
+        run: |
+          set -e
+
+          APK=$(find "$PROJECT_DIR" -type f -name "*.apk" -print -quit)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK tidak dijumpai."
+            exit 1
+          fi
+
+          echo "APK dijumpai:"
+          echo "$APK"
+
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: LiquidGlassLauncher-APK
-          path: "**/build/outputs/apk/release/*.apk"
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
